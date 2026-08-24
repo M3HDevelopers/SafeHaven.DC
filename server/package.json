@@ -1,0 +1,20 @@
+{
+  "name": "safehaven-server",
+  "version": "1.1.0",
+  "description": "SafeHaven AI Security — Express + MongoDB backend (auth, CRUD, model folder auto-detection, RTSP proxy)",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "chokidar": "^3.6.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "jsonwebtoken": "^9.0.2",
+    "mongoose": "^8.5.1",
+    "multer": "^1.4.5-lts.1"
+  }
+}

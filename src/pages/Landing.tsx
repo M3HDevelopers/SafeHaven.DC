@@ -4,7 +4,10 @@ import { FEEDS } from "../lib/data";
 import { Button, Dot } from "../lib/ui";
 import { Logo } from "../lib/layout";
 import { AreaChart } from "../lib/charts";
-import { DET_24, THR_24, pad2 } from "../lib/data";
+import { pad2 } from "../lib/data";
+
+const MOCK_DET = [2, 1, 1, 0, 1, 2, 3, 5, 8, 9, 7, 6, 9, 11, 8, 6, 7, 10, 12, 9, 6, 4, 3, 2];
+const MOCK_THR = [0, 0, 1, 0, 0, 0, 1, 0, 1, 2, 0, 1, 1, 2, 1, 0, 1, 2, 3, 1, 0, 1, 0, 0];
 
 function Nav({ onEnter }: { onEnter: () => void }) {
   return (
@@ -207,7 +210,7 @@ export default function Landing({ onEnter }: { onEnter: () => void }) {
                   <span className="flex items-center gap-1.5"><span className="h-1.5 w-1.5 rounded-full bg-threat" />THREATS</span>
                 </span>
               </div>
-              <AreaChart data={DET_24} threats={THR_24} labels={labels} height={180} />
+              <AreaChart data={MOCK_DET} threats={MOCK_THR} labels={labels} height={180} />
             </div>
           </div>
           <div className="flex flex-col justify-center gap-4">

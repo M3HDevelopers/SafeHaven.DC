@@ -3,11 +3,12 @@ import {
   LayoutDashboard, Radar, ScrollText, Camera as CameraIcon, Layers, BarChart3, SlidersHorizontal,
   BellRing, Server, Users, Bell, Keyboard, X, CheckCircle2, XCircle, Info, AlertTriangle,
   WifiOff, RefreshCw, Download, ChevronDown, LogOut, User as UserIcon, Menu, Home,
-  Video, Loader2, ShieldCheck, Maximize2,
+  Video, Loader2, ShieldCheck, Maximize2, Play, Camera, Plus,
 } from "lucide-react";
 import { useStore, PAGE_META, type Route } from "./store";
-import { fmtClock, fmtStamp, fmtTime, timeAgo, SEV, TYPE_COLOR, fmtDateTime, type Page, type WeaponType } from "./data";
-import { Button, IconBtn, Dot, SevBadge, cx, Avatar, Dropdown } from "./ui";
+import { fmtClock, fmtStamp, fmtTime, timeAgo, SEV, classColor, fmtDateTime, type Page } from "./data";
+import { getBackendUrl } from "./api";
+import { Button, IconBtn, Dot, SevBadge, cx, Avatar, Dropdown, EmptyState } from "./ui";
 
 /* ---------------- logo ---------------- */
 
@@ -57,9 +58,9 @@ const NAV: { label: string; items: { page: Page; tab?: string; label: string; ic
 
 function SidebarInner() {
   const s = useStore();
-  const online = s.cameras.filter((c) => c.status === "online").length;
-  const model = s.models.find((mm) => mm.id === s.activeModelId);
-  const userName = localStorage.getItem("sh_user") || "Admin User";
+  const online = s.sources.filter((c) => c.status === "online").length;
+  const eng = s.engine;
+  const userName = s.user?.name || "Admin User";
 
   const isActive = (it: { page: Page; tab?: string }) =>
     s.route.page === it.page && (it.page !== "settings" || (s.route.tab ?? "detection") === (it.tab ?? "detection"));
@@ -87,9 +88,7 @@ function SidebarInner() {
                     onClick={() => s.navigate(it.page, it.tab ? { tab: it.tab } : undefined)}
                     className={cx(
                       "flex h-10 w-full items-center gap-3 rounded-md border-l-[3px] px-3 text-[13px] font-medium transition-all duration-150",
-                      active
-                        ? "border-pri bg-pri/8 text-t1"
-                        : "border-transparent text-t2 hover:bg-white/4 hover:text-t1"
+                      active ? "border-pri bg-pri/8 text-t1" : "border-transparent text-t2 hover:bg-white/4 hover:text-t1"
                     )}
                   >
                     <span className={cx("transition-colors duration-150", active ? "text-pri" : "text-t3")}>{it.icon}</span>
@@ -109,28 +108,35 @@ function SidebarInner() {
 
       <div className="mx-3 mb-3 rounded-xl border border-line bg-card p-3.5">
         <div className="mb-2.5 flex items-center justify-between">
-          <span className="font-mono text-[9.5px] font-semibold tracking-[0.16em] text-t3">SYSTEM STATUS</span>
-          <Dot color="#20E3A2" pulse />
+          <span className="font-mono text-[9.5px] font-semibold tracking-[0.16em] text-t3">AI ENGINE</span>
+          {eng.state === "ready" ? <Dot color="#20E3A2" pulse /> : eng.state === "loading" ? <Loader2 size={12} className="animate-spin text-pri" /> : <Dot color="#FF3B4D" />}
         </div>
         <div className="space-y-2 text-[11.5px]">
-          <p className="flex items-center gap-2 text-safe"><CheckCircle2 size={12} /> <span className="font-semibold">OPERATIONAL</span></p>
+          <p className={cx("flex items-center gap-2 font-semibold", eng.state === "ready" ? "text-safe" : eng.state === "loading" ? "text-pri" : "text-threat")}>
+            {eng.state === "ready" ? "READY — INFERENCE LIVE" : eng.state === "loading" ? "LOADING MODEL…" : "MODEL ERROR"}
+          </p>
           <div className="flex justify-between gap-2 text-t2">
             <span className="text-t3">Model</span>
-            <span className="truncate font-mono text-[10.5px] text-t2">{model?.name} {model?.version}</span>
+            <span className="truncate font-mono text-[10px] text-t2" title={eng.modelName}>{eng.modelName}</span>
           </div>
           <div className="flex justify-between text-t2">
-            <span className="text-t3">Cameras</span>
+            <span className="text-t3">Sources</span>
             <span className="font-mono text-[10.5px]">{online} online</span>
           </div>
           <div>
             <div className="mb-1 flex justify-between text-t2">
-              <span className="text-t3">GPU</span>
-              <span className="font-mono text-[10.5px]">{s.metrics.gpu}%</span>
+              <span className="text-t3">Engine load</span>
+              <span className="font-mono text-[10.5px]">{s.metrics.load}%</span>
             </div>
             <div className="h-1 overflow-hidden rounded-full bg-[#1B2536]">
-              <div className="h-full rounded-full bg-pri transition-all duration-700" style={{ width: `${s.metrics.gpu}%` }} />
+              <div className="h-full rounded-full bg-pri transition-all duration-700" style={{ width: `${s.metrics.load}%` }} />
             </div>
           </div>
+          {eng.state === "error" && (
+            <button onClick={() => s.navigate("models")} className="w-full rounded-md border border-threat/40 bg-threat/10 px-2 py-1.5 font-mono text-[9.5px] font-bold text-threat transition-colors hover:bg-threat/20">
+              FIX MODEL →
+            </button>
+          )}
         </div>
       </div>
 
@@ -143,7 +149,7 @@ function SidebarInner() {
               <Avatar name={userName} size={32} />
               <span className="min-w-0 flex-1 leading-tight">
                 <span className="block truncate text-[12.5px] font-semibold text-t1">{userName}</span>
-                <span className="block font-mono text-[9.5px] tracking-wider text-t3">ADMINISTRATOR</span>
+                <span className="block font-mono text-[9.5px] tracking-wider text-t3">{s.user?.role ?? "OPERATOR"}</span>
               </span>
               <ChevronDown size={14} className="text-t3" />
             </button>
@@ -176,7 +182,7 @@ function Header({ onShortcuts }: { onShortcuts: () => void }) {
     s.route.page === "settings" && s.route.tab === "alerts"
       ? { title: "Alert Settings", sub: "Notification channels and escalation" }
       : s.route.page === "settings" && s.route.tab === "system"
-        ? { title: "System Settings", sub: "Platform health and services" }
+        ? { title: "System Settings", sub: "Backend, platform health and services" }
         : PAGE_META[s.route.page];
 
   const newCount = s.incidents.filter((i) => i.status === "New").length;
@@ -196,8 +202,12 @@ function Header({ onShortcuts }: { onShortcuts: () => void }) {
       </div>
 
       <div className="flex items-center gap-2 md:gap-3">
-        <span className="hidden items-center gap-2 rounded-full border border-safe/25 bg-safe/8 px-3 py-1.5 font-mono text-[11px] font-semibold text-safe md:inline-flex">
-          <Dot color="#20E3A2" pulse /> Operational
+        <span className={cx(
+          "hidden items-center gap-2 rounded-full border px-3 py-1.5 font-mono text-[10.5px] font-semibold md:inline-flex",
+          s.backendOk ? "border-safe/25 bg-safe/8 text-safe" : "border-warn/25 bg-warn/8 text-warn"
+        )}>
+          <Dot color={s.backendOk ? "#20E3A2" : "#FF9F1C"} pulse />
+          {s.backendOk ? "MongoDB Synced" : "Local Mode"}
         </span>
         <span className="hidden font-mono text-[12.5px] tabular-nums text-t2 sm:block">{fmtClock(s.now)}</span>
 
@@ -221,6 +231,7 @@ function Header({ onShortcuts }: { onShortcuts: () => void }) {
                 <span className="font-mono text-[10.5px] text-t3">{badge} unread</span>
               </div>
               <div className="max-h-72 overflow-y-auto thin-scroll">
+                {recent.length === 0 && <p className="px-4 py-6 text-center text-[12px] text-t3">No detections yet — start a source to generate events.</p>}
                 {recent.map((i) => (
                   <button
                     key={i.id}
@@ -229,8 +240,8 @@ function Header({ onShortcuts }: { onShortcuts: () => void }) {
                   >
                     <Dot color={SEV[i.severity].color} />
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[12px] font-semibold text-t1">{i.type} · {i.confidence.toFixed(1)}%</span>
-                      <span className="block font-mono text-[10px] text-t3">{i.cameraId} · {timeAgo(i.time, s.now)}</span>
+                      <span className="block truncate text-[12px] font-semibold capitalize text-t1">{i.label} · {i.confidence.toFixed(1)}%</span>
+                      <span className="block font-mono text-[10px] text-t3">{i.sourceId} · {timeAgo(i.time, s.now)}</span>
                     </span>
                     {i.status === "New" && <span className="rounded bg-pri/12 px-1.5 py-0.5 font-mono text-[9px] font-bold text-pri">NEW</span>}
                   </button>
@@ -247,7 +258,7 @@ function Header({ onShortcuts }: { onShortcuts: () => void }) {
         </div>
 
         <button onClick={() => s.navigate("profile")} className="ml-1 flex items-center gap-2 rounded-full transition-transform duration-150 hover:scale-[1.04]">
-          <Avatar name={localStorage.getItem("sh_user") || "Admin User"} size={32} />
+          <Avatar name={s.user?.name || "Admin User"} size={32} />
         </button>
       </div>
     </header>
@@ -259,15 +270,15 @@ function Header({ onShortcuts }: { onShortcuts: () => void }) {
 function AlertBar() {
   const s = useStore();
   if (!s.criticalActive) return null;
-  const latest = s.incidents.find((i) => i.severity === "CRITICAL");
+  const latest = s.incidents.find((i) => i.severity === "CRITICAL" || i.severity === "HIGH");
   return (
     <div className="anim-pulse-soft flex h-[42px] shrink-0 items-center gap-4 border-b border-[rgba(255,23,68,0.4)] bg-[rgba(255,23,68,0.10)] px-4 md:px-6">
       <span className="flex items-center gap-2.5">
         <Dot color="#FF1744" pulse />
-        <span className="font-mono text-[11.5px] font-bold tracking-[0.12em] text-crit">CRITICAL THREAT DETECTED</span>
+        <span className="font-mono text-[11px] font-bold tracking-[0.12em] text-crit">THREAT DETECTED</span>
       </span>
-      <span className="hidden min-w-0 flex-1 truncate text-[12.5px] text-t2 md:block">
-        {latest ? `${latest.type.toLowerCase()} detected on ${latest.cameraName}` : "Potential weapon detected on Camera 02"}
+      <span className="hidden min-w-0 flex-1 truncate text-[12.5px] capitalize text-t2 md:block">
+        {latest ? `${latest.label} detected on ${latest.sourceName}` : "Threat class detected by the AI model"}
       </span>
       <Button variant="danger" size="sm" className="ml-auto md:ml-0" onClick={() => latest && s.setOpenIncidentId(latest.id)}>
         VIEW INCIDENT
@@ -313,12 +324,6 @@ export function ToastHost() {
   );
 }
 
-const THREAT_SENTENCE: Record<WeaponType, string> = {
-  "Potential Weapon": "Potential weapon detected.",
-  Knife: "Knife detected in frame.",
-  "Other Threat": "Suspicious object detected.",
-};
-
 export function ThreatAlertHost() {
   const s = useStore();
   return (
@@ -340,11 +345,15 @@ export function ThreatAlertHost() {
               <span className="ml-auto"><SevBadge sev={inc.severity} pulse /></span>
             </div>
             <div className="flex gap-3 p-4">
-              <img src={inc.img} alt={`${inc.cameraId} frame`} className="h-[52px] w-[84px] shrink-0 rounded-md border border-line object-cover" />
+              {inc.img ? (
+                <img src={inc.img} alt={`${inc.sourceId} frame`} className="h-[52px] w-[84px] shrink-0 rounded-md border border-line object-cover" />
+              ) : (
+                <span className="flex h-[52px] w-[84px] shrink-0 items-center justify-center rounded-md border border-line bg-ink text-t3"><Camera size={16} /></span>
+              )}
               <div className="min-w-0 flex-1">
-                <p className="text-[12.5px] font-semibold text-t1">{THREAT_SENTENCE[inc.type]}</p>
+                <p className="text-[12.5px] font-semibold capitalize text-t1">{inc.label} detected.</p>
                 <div className="mt-1.5 space-y-0.5 font-mono text-[10.5px] text-t3">
-                  <p>CAMERA <span className="text-t2">{inc.cameraId}</span></p>
+                  <p>SOURCE <span className="text-t2">{inc.sourceId}</span></p>
                   <p>CONFIDENCE <span className="font-bold" style={{ color: SEV[inc.severity].color }}>{inc.confidence.toFixed(1)}%</span></p>
                   <p>TIME <span className="text-t2">{fmtTime(inc.time)}</span></p>
                 </div>
@@ -363,78 +372,175 @@ export function ThreatAlertHost() {
   );
 }
 
-/* ---------------- video viewport ---------------- */
+/* ---------------- real video viewport ---------------- */
 
-export function VideoViewport({ cameraId, tall }: { cameraId?: string; tall?: boolean }) {
+function useMediaUrl(srcId: string, kind: string, fileName?: string) {
+  const [url, setUrl] = useState<string | null>(null);
+  const [err, setErr] = useState(false);
+  useEffect(() => {
+    let live = true;
+    setUrl(null);
+    setErr(false);
+    if (kind !== "video" && kind !== "image") return;
+    void (async () => {
+      try {
+        const { getBlob } = await import("./api");
+        const meta = await getBlob(`meta:${srcId}`);
+        if (!meta) throw new Error("missing");
+        const mediaId = await meta.text();
+        const blob = await getBlob(`media:${mediaId}`);
+        if (!blob) throw new Error("missing");
+        if (live) setUrl(URL.createObjectURL(blob));
+      } catch {
+        if (live) setErr(true);
+      }
+    })();
+    return () => { live = false; if (url) URL.revokeObjectURL(url); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [srcId, kind, fileName]);
+  return { url, err };
+}
+
+export function VideoViewport() {
   const s = useStore();
-  const cam = s.cameras.find((c) => c.id === (cameraId ?? s.activeCamId)) ?? s.cameras[0];
-  const [loaded, setLoaded] = useState(false);
-  const [retrying, setRetrying] = useState(false);
-  const effKey = cam?.id;
+  const src = s.sources.find((c) => c.id === s.activeSourceId);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const imgRef = useRef<HTMLImageElement>(null);
+  const [streamErr, setStreamErr] = useState(false);
+  const [mediaReady, setMediaReady] = useState(false);
+  const { url, err: fileErr } = useMediaUrl(src?.id ?? "", src?.kind ?? "", src?.fileName);
 
-  useEffect(() => { setLoaded(false); }, [effKey]);
-  if (!cam) return null;
+  useEffect(() => { setMediaReady(false); setStreamErr(false); }, [src?.id, src?.kind]);
 
-  const at = s.activeThreat && s.activeThreat.cameraId === cam.id ? s.activeThreat : null;
-  const boxColor = at ? TYPE_COLOR[at.inc.type] : "#22D3EE";
-  const shortLabel = at ? (at.inc.type === "Potential Weapon" ? "WEAPON" : at.inc.type === "Knife" ? "KNIFE" : "THREAT") : "";
-  const offline = cam.status === "offline";
+  // webcam stream attach
+  useEffect(() => {
+    if (!src || src.kind !== "webcam") return;
+    let live = true;
+    void (async () => {
+      const stream = await s.getStream(src.id);
+      if (!live) return;
+      if (!stream) { setStreamErr(true); return; }
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        void videoRef.current.play().catch(() => undefined);
+      }
+    })();
+    return () => { live = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [src?.id, src?.kind]);
+
+  // register element with engine
+  useEffect(() => {
+    if (!mediaReady) return;
+    if (src?.kind === "image" && imgRef.current) s.registerMedia(imgRef.current);
+    else if (videoRef.current) s.registerMedia(videoRef.current);
+    return () => s.registerMedia(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mediaReady, src?.id]);
+
+  if (!src) {
+    return (
+      <div className="flex aspect-video w-full flex-col items-center justify-center gap-4 rounded-lg border border-line bg-[#05080D] px-6 text-center">
+        <span className="flex h-14 w-14 items-center justify-center rounded-2xl border border-line bg-raise text-t3"><Video size={22} /></span>
+        <div>
+          <p className="text-[14.5px] font-semibold text-t1">No surveillance source connected.</p>
+          <p className="mx-auto mt-1.5 max-w-[380px] text-[12.5px] leading-relaxed text-t3">
+            Connect your mobile camera, upload a video or image — the AI model analyzes it in real time.
+          </p>
+        </div>
+        <div className="flex gap-2.5">
+          <Button variant="primary" size="md" onClick={() => s.navigate("cameras")}><Plus size={14} /> ADD SOURCE</Button>
+          <Button variant="outline" size="md" onClick={() => s.navigate("models")}>CHECK MODEL</Button>
+        </div>
+      </div>
+    );
+  }
+
+  const dets = s.detections;
+  const showBoxes = s.settings.boxes;
+  const rtspUrl = src.kind === "rtsp" ? `${getBackendUrl()}/cameras/${src.id}/stream` : "";
 
   return (
-    <div className={cx("scanlines relative w-full overflow-hidden rounded-lg border border-line bg-[#05080D]", tall ? "aspect-video" : "aspect-video")}>
-      {!offline && (
-        <img
-          key={cam.id}
-          src={cam.img}
-          alt={`Live feed from ${cam.name}`}
-          onLoad={() => setLoaded(true)}
-          className={cx("h-full w-full object-cover transition-opacity duration-700", loaded ? "opacity-90" : "opacity-0")}
-          style={{ filter: "saturate(0.72) contrast(1.06) brightness(0.94)" }}
-        />
-      )}
+    <div className="scanlines relative w-full overflow-hidden rounded-lg border border-line bg-[#05080D]">
+      <div className="aspect-video w-full">
+        {(src.kind === "webcam" || src.kind === "video") && (
+          <video
+            ref={videoRef}
+            src={src.kind === "video" && url ? url : undefined}
+            autoPlay
+            muted
+            playsInline
+            loop={src.kind === "video"}
+            onLoadedData={() => setMediaReady(true)}
+            onError={() => src.kind === "video" && setStreamErr(true)}
+            className={cx("h-full w-full object-contain transition-opacity duration-500", mediaReady ? "opacity-100" : "opacity-0")}
+          />
+        )}
+        {(src.kind === "image") && (
+          url ? (
+            <img ref={imgRef} src={url} alt={src.name} onLoad={() => setMediaReady(true)} className="h-full w-full object-contain" />
+          ) : fileErr ? null : (
+            <div className="flex h-full items-center justify-center"><Loader2 size={22} className="animate-spin text-pri" /></div>
+          )
+        )}
+        {src.kind === "rtsp" && (
+          s.backendOk ? (
+            <img src={rtspUrl} alt={src.name} onLoad={() => setMediaReady(true)} onError={() => setStreamErr(true)} className="h-full w-full object-contain" />
+          ) : (
+            <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
+              <span className="flex h-12 w-12 items-center justify-center rounded-xl border border-warn/40 bg-warn/10 text-warn"><Server size={18} /></span>
+              <div>
+                <p className="text-[14px] font-bold text-t1">RTSP stream needs the SafeHaven backend</p>
+                <p className="mx-auto mt-1 max-w-[420px] text-[12px] leading-relaxed text-t3">
+                  Browsers cannot open RTSP directly. Start the server (<span className="font-mono text-t2">cd server && npm start</span>) and connect it in System Settings — the backend proxies the stream via ffmpeg.
+                </p>
+              </div>
+            </div>
+          )
+        )}
+      </div>
 
       {/* loading */}
-      {!offline && !loaded && (
+      {!mediaReady && !streamErr && !fileErr && src.kind !== "rtsp" && (
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
           <Loader2 size={22} className="animate-spin text-pri" />
-          <p className="font-mono text-[11.5px] tracking-wider text-t3">Connecting to camera…</p>
+          <p className="font-mono text-[11.5px] tracking-wider text-t3">Connecting to source…</p>
         </div>
       )}
 
-      {/* offline error state */}
-      {offline && (
+      {/* errors */}
+      {(streamErr || fileErr) && (
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-[#0B0F17] px-6 text-center">
-          <span className="flex h-12 w-12 items-center justify-center rounded-xl border border-threat/40 bg-threat/10 text-threat">
-            <WifiOff size={20} />
-          </span>
+          <span className="flex h-12 w-12 items-center justify-center rounded-xl border border-threat/40 bg-threat/10 text-threat"><WifiOff size={20} /></span>
           <div>
-            <p className="text-[14px] font-bold text-t1">Camera connection lost</p>
-            <p className="mt-1 font-mono text-[11px] text-t3">LAST HEARTBEAT {timeAgo(s.now - cam.lastHeartbeat * 1000, s.now).toUpperCase()} · {cam.endpoint}</p>
+            <p className="text-[14px] font-bold text-t1">{fileErr ? "Media file not found" : "Camera access failed"}</p>
+            <p className="mt-1 text-[12px] text-t3">
+              {fileErr ? "The uploaded file was cleared from browser storage. Re-upload it in Cameras." : "Allow camera permission or check that no other app is using the device."}
+            </p>
           </div>
-          <Button
-            variant="secondary" size="sm"
-            onClick={() => { setRetrying(true); s.retryCamera(cam.id); setTimeout(() => setRetrying(false), 1800); }}
-          >
-            <RefreshCw size={13} className={retrying ? "animate-spin" : ""} />
-            {retrying ? "RECONNECTING…" : "RETRY CONNECTION"}
+          <Button variant="secondary" size="sm" onClick={() => { setStreamErr(false); setMediaReady(false); void s.retrySource(src.id); }}>
+            <RefreshCw size={13} /> RETRY
           </Button>
         </div>
       )}
 
       {/* overlays */}
-      {!offline && loaded && (
+      {mediaReady && (
         <>
-          {/* corner brackets */}
           {["left-2 top-2 border-l-2 border-t-2", "right-2 top-2 border-r-2 border-t-2", "left-2 bottom-2 border-l-2 border-b-2", "right-2 bottom-2 border-r-2 border-b-2"].map((c) => (
             <span key={c} className={cx("pointer-events-none absolute h-5 w-5 border-pri/60", c)} />
           ))}
 
           <div className="pointer-events-none absolute left-4 top-3.5 flex items-center gap-2">
-            <span className="flex items-center gap-1.5 rounded bg-black/55 px-2 py-1 font-mono text-[10px] font-bold tracking-widest text-threat backdrop-blur-sm">
-              <span className="anim-blink h-1.5 w-1.5 rounded-full bg-threat" /> LIVE
-            </span>
+            {s.running ? (
+              <span className="flex items-center gap-1.5 rounded bg-black/55 px-2 py-1 font-mono text-[10px] font-bold tracking-widest text-threat backdrop-blur-sm">
+                <span className="anim-blink h-1.5 w-1.5 rounded-full bg-threat" /> LIVE
+              </span>
+            ) : (
+              <span className="rounded bg-black/55 px-2 py-1 font-mono text-[10px] font-bold tracking-widest text-t3 backdrop-blur-sm">STANDBY</span>
+            )}
             <span className="rounded bg-black/55 px-2 py-1 font-mono text-[10px] tracking-wider text-t1 backdrop-blur-sm">
-              {cam.name.toUpperCase()} · {cam.location.toUpperCase()}
+              {src.id} · {src.name.toUpperCase()}
             </span>
           </div>
 
@@ -444,19 +550,21 @@ export function VideoViewport({ cameraId, tall }: { cameraId?: string; tall?: bo
                 <span className="anim-blink h-1.5 w-1.5 rounded-full bg-threat" /> REC
               </span>
             )}
-            <span className="rounded bg-black/55 px-2 py-1 font-mono text-[10px] font-semibold text-pri backdrop-blur-sm">
-              FPS {s.metrics.fps.toFixed(1)}
-            </span>
+            {s.running && (
+              <span className="rounded bg-black/55 px-2 py-1 font-mono text-[10px] font-semibold text-pri backdrop-blur-sm">
+                {s.metrics.fps.toFixed(1)} FPS · {s.metrics.latency}ms
+              </span>
+            )}
           </div>
 
-          <div className="pointer-events-none absolute bottom-3 left-4 rounded bg-black/55 px-2 py-1 font-mono text-[9.5px] tracking-wider text-t2 backdrop-blur-sm">
-            AI MODEL: WEAPON-DETECTOR-V2
+          <div className="pointer-events-none absolute bottom-3 left-4 max-w-[70%] truncate rounded bg-black/55 px-2 py-1 font-mono text-[9.5px] tracking-wider text-t2 backdrop-blur-sm">
+            AI MODEL: {s.engine.modelName.toUpperCase()} {s.engine.state === "loading" && "· LOADING…"}
           </div>
           <div className="pointer-events-none absolute bottom-3 right-4 rounded bg-black/55 px-2 py-1 font-mono text-[9.5px] tabular-nums tracking-wider text-t2 backdrop-blur-sm">
             {fmtStamp(s.now)}
           </div>
 
-          {/* scanning sweep */}
+          {/* scanning sweep while running */}
           {s.running && (
             <div className="pointer-events-none absolute inset-x-0 h-14" style={{ animation: "kf-scan 5.5s linear infinite" }}>
               <div className="h-full w-full bg-gradient-to-b from-transparent via-pri/6 to-transparent" />
@@ -464,38 +572,35 @@ export function VideoViewport({ cameraId, tall }: { cameraId?: string; tall?: bo
             </div>
           )}
 
-          {/* detection bounding box */}
-          {s.running && at && s.settings.boxes && (
-            <div
-              className="anim-boxin pointer-events-none absolute"
-              style={{
-                left: `${at.box.x}%`, top: `${at.box.y}%`, width: `${at.box.w}%`, height: `${at.box.h}%`,
-                transition: "left 2.2s linear, top 2.2s linear, width 2.2s linear, height 2.2s linear",
-              }}
-            >
-              <div className="relative h-full w-full rounded-[3px] border-[1.5px]" style={{ borderColor: boxColor, boxShadow: `0 0 18px ${boxColor}33, inset 0 0 14px ${boxColor}14` }}>
-                {s.settings.labels && (
-                  <span
-                    className="absolute -top-[22px] left-[-1.5px] flex items-center gap-1.5 rounded-sm px-1.5 py-0.5 font-mono text-[9.5px] font-bold tracking-wider text-[#080C14]"
-                    style={{ background: boxColor }}
-                  >
-                    {shortLabel} {at.inc.confidence.toFixed(1)}%
-                  </span>
-                )}
-                <span className="absolute -left-px -top-px h-2.5 w-2.5 border-l-2 border-t-2" style={{ borderColor: boxColor }} />
-                <span className="absolute -right-px -top-px h-2.5 w-2.5 border-r-2 border-t-2" style={{ borderColor: boxColor }} />
-                <span className="absolute -bottom-px -left-px h-2.5 w-2.5 border-b-2 border-l-2" style={{ borderColor: boxColor }} />
-                <span className="absolute -bottom-px -right-px h-2.5 w-2.5 border-b-2 border-r-2" style={{ borderColor: boxColor }} />
+          {/* REAL detection boxes from the model */}
+          {showBoxes && dets.map((d, i) => {
+            const col = d.isThreat ? classColor(d.label) : "#22D3EE";
+            return (
+              <div
+                key={`${d.label}-${i}`}
+                className="anim-boxin pointer-events-none absolute"
+                style={{
+                  left: `${d.box.x}%`, top: `${d.box.y}%`, width: `${d.box.w}%`, height: `${d.box.h}%`,
+                  transition: "left 0.25s linear, top 0.25s linear, width 0.25s linear, height 0.25s linear",
+                }}
+              >
+                <div className="relative h-full w-full rounded-[3px] border-[1.5px]" style={{ borderColor: col, boxShadow: `0 0 16px ${col}33` }}>
+                  {s.settings.labels && (
+                    <span className="absolute -top-[22px] left-[-1.5px] rounded-sm px-1.5 py-0.5 font-mono text-[9.5px] font-bold capitalize tracking-wider text-[#080C14]" style={{ background: col }}>
+                      {d.label} {(d.confidence * 100).toFixed(1)}%
+                    </span>
+                  )}
+                </div>
               </div>
-            </div>
-          )}
+            );
+          })}
 
-          {/* paused overlay */}
           {!s.running && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-[#05080D]/72 backdrop-blur-[2px]">
-              <Video size={22} className="text-t3" />
-              <p className="font-mono text-[12px] font-semibold tracking-[0.14em] text-t2">DETECTION PAUSED</p>
-              <p className="text-[11.5px] text-t3">Live feed only — press START DETECTION to resume AI analysis.</p>
+            <div className="absolute inset-x-0 bottom-0 flex items-center justify-center gap-2 bg-gradient-to-t from-[#05080D]/90 to-transparent pb-10 pt-16">
+              <Play size={14} className="text-pri" />
+              <p className="font-mono text-[11px] font-semibold tracking-[0.14em] text-t2">
+                DETECTION PAUSED — PRESS START DETECTION (SPACE)
+              </p>
             </div>
           )}
         </>
@@ -511,15 +616,12 @@ export function ThreatLevelChip() {
   const m = SEV[s.threatLevel];
   return (
     <span
-      className={cx(
-        "inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 font-mono text-[11px] font-bold tracking-[0.12em]",
-        s.threatLevel === "CRITICAL" && "anim-pulse-crit"
-      )}
+      className={cx("inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 font-mono text-[11px] font-bold tracking-[0.12em]", s.threatLevel === "CRITICAL" && "anim-pulse-crit")}
       style={{ color: m.color, background: m.bg, borderColor: `${m.color}44` }}
       title={`Current threat level: ${m.label}`}
     >
       <Dot color={m.color} pulse={s.threatLevel !== "SAFE"} />
-      THREAT LEVEL: {m.label}
+      {m.label}
     </span>
   );
 }
@@ -531,35 +633,28 @@ export function IncidentModal() {
   const inc = s.incidents.find((i) => i.id === s.openIncidentId);
 
   useEffect(() => {
-    if (!inc) return;
     const h = (e: KeyboardEvent) => { if (e.key === "Escape") s.setOpenIncidentId(null); };
     window.addEventListener("keydown", h);
     return () => window.removeEventListener("keydown", h);
-  }, [inc, s]);
+  }, [s]);
 
   if (!inc) return null;
   const sev = SEV[inc.severity];
 
   const download = () => {
-    fetch(inc.img).then((r) => r.blob()).then((b) => {
-      const url = URL.createObjectURL(b);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `safehaven_${inc.id}_snapshot.png`;
-      a.click();
-      setTimeout(() => URL.revokeObjectURL(url), 4000);
-      s.toast("success", "Snapshot downloaded", `${inc.id} frame saved with detection metadata.`);
-    }).catch(() => {
-      window.open(inc.img, "_blank", "noopener");
-      s.toast("info", "Snapshot opened", `${inc.id} frame opened full-size in a new tab.`);
-    });
+    if (!inc.img) { s.toast("warning", "Snapshot unavailable", "Older events keep metadata only."); return; }
+    const a = document.createElement("a");
+    a.href = inc.img;
+    a.download = `safehaven_${inc.id}_snapshot.jpg`;
+    a.click();
+    s.toast("success", "Snapshot downloaded", `${inc.id} frame saved.`);
   };
 
   const rows: [string, React.ReactNode][] = [
-    ["DETECTION TYPE", <span key="t" className="font-semibold text-t1">{inc.type}</span>],
+    ["DETECTION TYPE", <span key="t" className="font-semibold capitalize text-t1">{inc.label}</span>],
     ["CONFIDENCE", <span key="c" className="font-mono font-bold" style={{ color: sev.color }}>{inc.confidence.toFixed(1)}%</span>],
-    ["CAMERA", <span key="cam" className="text-t1">{inc.cameraName}</span>],
-    ["CAMERA ID", <span key="id" className="font-mono text-pri">{inc.cameraId}</span>],
+    ["SOURCE", <span key="cam" className="text-t1">{inc.sourceName}</span>],
+    ["SOURCE ID", <span key="id" className="font-mono text-pri">{inc.sourceId}</span>],
     ["TIMESTAMP", <span key="ts" className="font-mono text-t2">{fmtDateTime(inc.time)}</span>],
     ["SEVERITY", <SevBadge key="s" sev={inc.severity} pulse />],
     ["AI MODEL", <span key="m" className="font-mono text-t2">{inc.model}</span>],
@@ -580,15 +675,21 @@ export function IncidentModal() {
 
         <div className="p-6">
           <div className="scanlines relative overflow-hidden rounded-lg border border-line bg-[#05080D]">
-            <img src={inc.img} alt={`Evidence frame for ${inc.id}`} className="aspect-video w-full object-cover opacity-90" style={{ filter: "saturate(0.72) contrast(1.05)" }} />
-            <div className="absolute" style={{ left: `${inc.box.x}%`, top: `${inc.box.y}%`, width: `${inc.box.w}%`, height: `${inc.box.h}%` }}>
-              <div className="relative h-full w-full rounded-[3px] border-[1.5px]" style={{ borderColor: TYPE_COLOR[inc.type] }}>
-                <span className="absolute -top-[22px] left-0 rounded-sm px-1.5 py-0.5 font-mono text-[9.5px] font-bold tracking-wider text-[#080C14]" style={{ background: TYPE_COLOR[inc.type] }}>
-                  {inc.type === "Potential Weapon" ? "WEAPON" : inc.type === "Knife" ? "KNIFE" : "THREAT"} {inc.confidence.toFixed(1)}%
-                </span>
+            {inc.img ? (
+              <img src={inc.img} alt={`Evidence frame for ${inc.id}`} className="aspect-video w-full object-contain" />
+            ) : (
+              <div className="flex aspect-video items-center justify-center text-t3"><Camera size={26} /></div>
+            )}
+            {inc.img && (
+              <div className="absolute" style={{ left: `${inc.box.x}%`, top: `${inc.box.y}%`, width: `${inc.box.w}%`, height: `${inc.box.h}%` }}>
+                <div className="relative h-full w-full rounded-[3px] border-[1.5px]" style={{ borderColor: classColor(inc.label) }}>
+                  <span className="absolute -top-[22px] left-0 rounded-sm px-1.5 py-0.5 font-mono text-[9.5px] font-bold capitalize tracking-wider text-[#080C14]" style={{ background: classColor(inc.label) }}>
+                    {inc.label} {inc.confidence.toFixed(1)}%
+                  </span>
+                </div>
               </div>
-            </div>
-            <span className="absolute left-3 top-3 rounded bg-black/55 px-2 py-1 font-mono text-[9.5px] tracking-wider text-t2">{inc.cameraId} · {fmtStamp(inc.time)}</span>
+            )}
+            <span className="absolute left-3 top-3 rounded bg-black/55 px-2 py-1 font-mono text-[9.5px] tracking-wider text-t2">{inc.sourceId} · {fmtStamp(inc.time)}</span>
           </div>
 
           <div className="mt-5 grid grid-cols-1 gap-x-6 gap-y-3.5 sm:grid-cols-2">
@@ -621,9 +722,8 @@ const SHORTCUTS: [string, string][] = [
   ["Space", "Start / stop detection"],
   ["S", "Capture snapshot"],
   ["R", "Toggle recording"],
-  ["F", "Fullscreen viewport"],
   ["L", "Open Threat Logs"],
-  ["Esc", "Close dialogs"],
+  ["Esc", "Close dialogs / fullscreen"],
   ["?", "Shortcut help"],
 ];
 
@@ -661,13 +761,13 @@ export function ShortcutsModal({ open, onClose }: { open: boolean; onClose: () =
 function FullscreenOverlay() {
   const s = useStore();
   if (!s.fullscreen) return null;
-  const cam = s.cameras.find((c) => c.id === s.activeCamId);
+  const src = s.sources.find((c) => c.id === s.activeSourceId);
   return (
     <div className="anim-fade fixed inset-0 z-[80] flex flex-col bg-[#04070C]">
       <div className="flex h-14 items-center justify-between border-b border-line px-5">
         <span className="flex items-center gap-3">
           <Maximize2 size={15} className="text-pri" />
-          <span className="font-mono text-[12px] font-semibold tracking-wider text-t1">{cam?.id} — {cam?.location.toUpperCase()}</span>
+          <span className="font-mono text-[12px] font-semibold tracking-wider text-t1">{src?.id} — {src?.name.toUpperCase()}</span>
         </span>
         <div className="flex items-center gap-2">
           <ThreatLevelChip />
@@ -686,7 +786,7 @@ function FullscreenOverlay() {
 function Footer() {
   const s = useStore();
   const link = (label: string) => (
-    <button onClick={() => s.toast("info", `${label}`, "Opens in the SafeHaven ops portal.")} className="transition-colors duration-150 hover:text-t2">
+    <button onClick={() => s.toast("info", label, "Opens in the SafeHaven ops portal.")} className="transition-colors duration-150 hover:text-t2">
       {label}
     </button>
   );
@@ -694,10 +794,10 @@ function Footer() {
     <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-line px-4 py-4 text-[11.5px] text-t3 md:px-6">
       <span>© 2026 SafeHaven AI Security</span>
       <span className="flex items-center gap-2 font-mono text-[10.5px] tracking-wider">
-        <Dot color="#20E3A2" pulse /> SYSTEM STATUS · OPERATIONAL
+        <Dot color={s.backendOk ? "#20E3A2" : "#FF9F1C"} pulse /> {s.backendOk ? "BACKEND · OPERATIONAL" : "LOCAL MODE · BROWSER ENGINE"}
       </span>
       <span className="flex items-center gap-4">
-        <span className="font-mono text-[10.5px]">v1.0.0</span>
+        <span className="font-mono text-[10.5px]">v1.1.0</span>
         {link("Privacy")} {link("Terms")} {link("Support")}
       </span>
     </footer>
@@ -747,7 +847,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT" || el.isContentEditable)) return;
       if (e.key === "Escape" && fullRef.current) { s.setFullscreen(false); return; }
       switch (e.key) {
-        case " ": e.preventDefault(); s.running ? s.stopDetection() : s.startDetection(); break;
+        case " ": e.preventDefault(); s.running ? s.stopDetection() : void s.startDetection(); break;
         case "s": case "S": s.snapshot(); break;
         case "r": case "R": s.toggleRecord(); break;
         case "l": case "L": s.navigate("logs"); break;
@@ -789,3 +889,5 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     </div>
   );
 }
+
+export { EmptyState };
