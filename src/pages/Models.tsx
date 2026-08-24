@@ -1,132 +1,118 @@
-import React, { useState } from "react";
-import { Upload, Trash2, Eye, Zap, Layers, FileUp, Cpu, Target } from "lucide-react";
+import React, { useRef, useState } from "react";
+import { Upload, Trash2, Layers, CheckCircle2, AlertTriangle, FolderOpen, Loader2, Play, Cpu, RefreshCw } from "lucide-react";
 import { useStore } from "../lib/store";
-import { Card, Button, Modal, ModalHead, ConfirmModal, Field, Input, Dot, cx } from "../lib/ui";
+import { Card, CardHead, Button, ConfirmModal, Modal, ModalHead, Field, Input, cx } from "../lib/ui";
 import type { ModelInfo } from "../lib/data";
-
-function StatusPillModel({ st }: { st: ModelInfo["status"] }) {
-  const map = {
-    ACTIVE: { c: "#20E3A2", bg: "rgba(32,227,162,0.12)" },
-    STANDBY: { c: "#38BDF8", bg: "rgba(56,189,248,0.12)" },
-    DEPRECATED: { c: "#64748B", bg: "rgba(100,116,139,0.14)" },
-  }[st];
-  return (
-    <span className="inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 font-mono text-[10px] font-bold tracking-wider" style={{ color: map.c, background: map.bg }}>
-      <Dot color={map.c} pulse={st === "ACTIVE"} /> {st}
-    </span>
-  );
-}
 
 function UploadModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const s = useStore();
-  const [name, setName] = useState("");
-  const [version, setVersion] = useState("v1.0.0");
-  const [file, setFile] = useState("");
+  const onnxIn = useRef<HTMLInputElement>(null);
+  const clsIn = useRef<HTMLInputElement>(null);
+  const [file, setFile] = useState<File | null>(null);
+  const [classes, setClasses] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+
+  const submit = async () => {
+    if (!file) return;
+    setBusy(true);
+    setErr("");
+    try {
+      const list = classes.split(",").map((x) => x.trim()).filter(Boolean);
+      await s.uploadModel(file, list.length ? list : undefined);
+      onClose();
+      setFile(null);
+      setClasses("");
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Upload failed");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <Modal open={open} onClose={onClose} width="max-w-md">
-      <ModalHead title="UPLOAD MODEL" sub="Deploy new inference weights to the engine" onClose={onClose} />
+      <ModalHead title="UPLOAD MODEL" sub="ONNX weights for the browser inference engine" onClose={onClose} />
       <div className="space-y-4 p-6">
-        <Field label="Model Name"><Input placeholder="e.g. Firearm Classifier" value={name} onChange={(e) => setName(e.target.value)} /></Field>
-        <Field label="Version"><Input placeholder="v1.0.0" value={version} onChange={(e) => setVersion(e.target.value)} className="font-mono" /></Field>
-        <Field label="Weights File" hint="Accepted formats: .onnx · .pt · .engine — validated on upload.">
-          <label className="flex h-[42px] cursor-pointer items-center gap-3 rounded-lg border border-dashed border-edge bg-ink px-3.5 text-[12.5px] text-t3 transition-colors hover:border-pri/50 hover:text-t2">
-            <FileUp size={15} className="text-pri" />
-            <span className="truncate font-mono text-[12px]">{file || "Browse weights file…"}</span>
-            <input type="file" className="hidden" onChange={(e) => setFile(e.target.files?.[0]?.name ?? "")} />
-          </label>
+        <input ref={onnxIn} type="file" accept=".onnx" className="hidden" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+        <button onClick={() => onnxIn.current?.click()} className="flex w-full flex-col items-center gap-2 rounded-xl border-2 border-dashed border-line bg-ink px-6 py-7 transition-colors duration-150 hover:border-pri/50 hover:bg-pri/4">
+          <Upload size={19} className="text-pri" />
+          <span className="text-[13px] font-semibold text-t1">{file ? file.name : "Select .onnx model file"}</span>
+          <span className="font-mono text-[10px] text-t3">{file ? `${(file.size / 1048576).toFixed(1)} MB` : "YOLOv5 / YOLOv8 exports supported"}</span>
+        </button>
+        <Field label="Class Names (optional)" hint="Comma-separated, in model output order. Leave empty for COCO (80 classes) or if a classes file ships with the model on the backend.">
+          <Input value={classes} onChange={(e) => setClasses(e.target.value)} placeholder="firearm, knife, person" />
         </Field>
+        <p className="rounded-lg border border-line bg-ink px-3.5 py-2.5 text-[11px] leading-relaxed text-t3">
+          Classes matching <span className="font-mono text-threat">gun / weapon / firearm</span> and <span className="font-mono text-warn">knife / blade</span> automatically raise threat incidents with alerts.
+        </p>
+        {err && <p className="rounded-lg border border-threat/40 bg-threat/10 px-3.5 py-2.5 text-[12px] text-threat">{err}</p>}
       </div>
       <div className="flex justify-end gap-2.5 border-t border-line px-6 py-4">
         <Button variant="ghost" onClick={onClose}>Cancel</Button>
-        <Button variant="primary" disabled={!name.trim() || !file} onClick={() => { s.addModel({ name: name.trim(), version, file }); onClose(); setName(""); setFile(""); }}>
-          <Upload size={14} /> Upload Model
+        <Button variant="primary" disabled={!file || busy} onClick={submit}>
+          {busy ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />} Upload & Load
         </Button>
       </div>
     </Modal>
   );
 }
 
-function ModelCard({ m }: { m: ModelInfo }) {
+function ModelCard({ m, activeEngine }: { m: ModelInfo; activeEngine: string }) {
   const s = useStore();
   const [confirm, setConfirm] = useState(false);
-  const [details, setDetails] = useState(false);
-  const active = m.status === "ACTIVE";
-
+  const isLoaded = s.engine.state === "ready" && s.engine.modelName === m.name;
   return (
-    <Card hover className="flex flex-col p-5">
+    <Card hover className="flex flex-col p-4">
       <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="font-mono text-[14px] font-bold tracking-wide text-t1">{m.name.toUpperCase()}</p>
-          <p className="mt-0.5 font-mono text-[10.5px] text-t3">{m.version} · {m.id}</p>
-        </div>
-        <StatusPillModel st={m.status} />
-      </div>
-
-      <div className="mt-4 grid grid-cols-2 gap-3">
-        <div className="rounded-lg border border-line bg-ink px-3 py-2.5">
-          <p className="font-mono text-[9px] tracking-[0.14em] text-t3">ACCURACY</p>
-          <p className="mt-1 font-mono text-[16px] font-bold text-pri">{m.accuracy ? `${m.accuracy.toFixed(1)}%` : "—"}</p>
-        </div>
-        <div className="rounded-lg border border-line bg-ink px-3 py-2.5">
-          <p className="font-mono text-[9px] tracking-[0.14em] text-t3">INFERENCE</p>
-          <p className="mt-1 font-mono text-[16px] font-bold text-skyx">{m.fps ? `${m.fps.toFixed(0)} FPS` : "—"}</p>
+        <span className={cx("flex h-11 w-11 items-center justify-center rounded-xl border", m.origin === "default" ? "border-line bg-ink text-t2" : "border-pri/40 bg-pri/8 text-pri")}>
+          <Layers size={16} />
+        </span>
+        <div className="flex items-center gap-2">
+          {isLoaded ? (
+            <span className="flex items-center gap-1.5 rounded-md border border-safe/30 bg-safe/10 px-2 py-1 font-mono text-[9.5px] font-bold text-safe">
+              <span className="anim-pulse-soft h-1.5 w-1.5 rounded-full bg-safe" /> LOADED IN ENGINE
+            </span>
+          ) : (
+            <span className="rounded-md border border-line bg-ink px-2 py-1 font-mono text-[9.5px] font-semibold text-t3">{m.status}</span>
+          )}
+          <span className="rounded-md border border-line bg-ink px-2 py-1 font-mono text-[9.5px] text-t2">{m.origin.toUpperCase()}</span>
         </div>
       </div>
-
-      <div className="mt-3.5 flex flex-wrap gap-1.5">
-        {m.classes.map((c) => (
-          <span key={c} className="rounded-md border border-line bg-ink px-2 py-0.5 font-mono text-[10px] text-t2">{c}</span>
-        ))}
+      <div className="mt-3.5 min-w-0">
+        <p className="truncate text-[14px] font-bold text-t1" title={m.name}>{m.name}</p>
+        <p className="font-mono text-[10.5px] tracking-wider text-pri">{m.version} · {m.size}</p>
       </div>
-
-      <div className="mt-3.5 flex items-center justify-between border-t border-line pt-3 font-mono text-[10px] text-t3">
-        <span>UPLOADED {m.uploaded.toUpperCase()}</span>
-        <span>{m.size}</span>
+      <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1.5 border-t border-line pt-3 font-mono text-[10.5px]">
+        <span className="text-t3">ACCURACY <span className="ml-1 text-t2">{m.accuracy ? `${m.accuracy.toFixed(1)}%` : "—"}</span></span>
+        <span className="text-t3">SPEED <span className="ml-1 text-t2">{m.fps ? `${m.fps} FPS` : "—"}</span></span>
+        <span className="text-t3">UPLOADED <span className="ml-1 text-t2">{m.uploaded}</span></span>
+        <span className="truncate text-t3">CLASSES <span className="ml-1 text-t2">{m.classes.slice(0, 2).join(", ")}{m.classes.length > 2 ? "…" : ""}</span></span>
       </div>
-
       <div className="mt-4 flex gap-2">
-        <Button
-          variant={active ? "outline" : "primary"} size="sm" className="flex-1" disabled={active}
-          onClick={() => s.activateModel(m.id)}
-        >
-          <Zap size={12} /> {active ? "ACTIVE" : "ACTIVATE"}
-        </Button>
-        <Button variant="ghost" size="sm" onClick={() => setDetails(true)}><Eye size={13} /> DETAILS</Button>
-        <Button
-          variant="ghost" size="sm" className="text-threat hover:bg-threat/10" aria-label={`Delete ${m.name}`}
-          onClick={() => {
-            if (active) s.toast("error", "Cannot delete active model", "Activate another model before removing this one.");
-            else setConfirm(true);
-          }}
-        >
-          <Trash2 size={13} />
-        </Button>
+        {m.origin === "default" ? (
+          <Button variant="secondary" size="sm" className="flex-1" onClick={() => void s.useDefaultModel()}><Play size={13} /> USE DEFAULT</Button>
+        ) : (
+          <Button variant={isLoaded ? "outline" : "primary"} size="sm" className="flex-1" disabled={isLoaded} onClick={() => void s.activateModel(m.id)}>
+            {isLoaded ? <><CheckCircle2 size={13} /> ACTIVE</> : <><Play size={13} /> ACTIVATE</>}
+          </Button>
+        )}
+        {m.origin !== "default" && (
+          <Button variant="ghost" size="sm" className="text-threat hover:bg-threat/10" onClick={() => setConfirm(true)} aria-label={`Delete ${m.name}`}>
+            <Trash2 size={13} />
+          </Button>
+        )}
       </div>
-
-      {details && (
-        <Modal open onClose={() => setDetails(false)} width="max-w-md">
-          <ModalHead title={m.name.toUpperCase()} sub={`${m.version} · ${m.id}`} onClose={() => setDetails(false)} />
-          <div className="space-y-3 p-6">
-            {([
-              ["STATUS", m.status], ["ACCURACY", m.accuracy ? `${m.accuracy.toFixed(1)}%` : "Pending calibration"],
-              ["INFERENCE SPEED", m.fps ? `${m.fps.toFixed(1)} FPS` : "—"], ["CLASSES", m.classes.join(", ")],
-              ["UPLOADED", m.uploaded], ["WEIGHT SIZE", m.size], ["RUNTIME", "ONNX Runtime · CUDA 12.4"],
-            ] as [string, string][]).map(([k, v]) => (
-              <div key={k} className="flex items-start justify-between gap-4 border-b border-line/60 pb-2.5">
-                <span className="font-mono text-[10px] font-semibold tracking-[0.14em] text-t3">{k}</span>
-                <span className="text-right font-mono text-[12px] text-t1">{v}</span>
-              </div>
-            ))}
-          </div>
-        </Modal>
+      {m.origin !== "default" && (
+        <ConfirmModal
+          open={confirm}
+          title={`Delete ${m.name}?`}
+          body="The model weights will be removed and the engine will fall back to the next available model."
+          onCancel={() => setConfirm(false)}
+          onConfirm={() => { setConfirm(false); void s.deleteModel(m.id); }}
+        />
       )}
-      <ConfirmModal
-        open={confirm}
-        title={`Delete ${m.name}?`}
-        body="This permanently removes the weights from the model directory. Calibration history will be lost."
-        onCancel={() => setConfirm(false)}
-        onConfirm={() => { setConfirm(false); s.deleteModel(m.id); }}
-      />
+      <span className="sr-only">{activeEngine}</span>
     </Card>
   );
 }
@@ -134,64 +120,66 @@ function ModelCard({ m }: { m: ModelInfo }) {
 export default function Models() {
   const s = useStore();
   const [upload, setUpload] = useState(false);
-  const active = s.models.find((m) => m.id === s.activeModelId) ?? s.models[0];
+  const e = s.engine;
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="font-mono text-[11px] tracking-wider text-t3">
-          <span className="font-bold text-t1">{s.models.length}</span> MODELS REGISTERED · <span className="font-bold text-safe">1</span> SERVING INFERENCE
-        </p>
-        <Button variant="primary" onClick={() => setUpload(true)}><Upload size={15} /> UPLOAD MODEL</Button>
-      </div>
-
-      {/* active model banner */}
-      {active && (
-        <Card className="relative overflow-hidden">
-          <div className="absolute inset-y-0 left-0 w-[3px] bg-pri" />
-          <div className="pointer-events-none absolute right-[-80px] top-[-80px] h-[240px] w-[240px] rounded-full bg-[radial-gradient(closest-side,rgba(34,211,238,0.09),transparent)]" />
-          <div className="flex flex-wrap items-center gap-6 p-6">
-            <span className="flex h-14 w-14 items-center justify-center rounded-xl border border-pri/30 bg-pri/8 text-pri">
-              <Layers size={24} />
-            </span>
-            <div className="min-w-[220px] flex-1">
-              <div className="flex flex-wrap items-center gap-3">
-                <h2 className="font-mono text-[19px] font-bold tracking-wide text-t1">{active.name.toUpperCase()} {active.version.toUpperCase()}</h2>
-                <StatusPillModel st="ACTIVE" />
-              </div>
-              <p className="mt-1 text-[12.5px] text-t3">Serving all online cameras · {s.settings.device} · {s.settings.precision} · auto-recovery armed</p>
-            </div>
-            <div className="grid grid-cols-3 gap-6">
-              {([
-                ["ACCURACY", `${active.accuracy.toFixed(1)}%`, "#22D3EE"],
-                ["INFERENCE", `${s.metrics.fps.toFixed(1)} FPS`, "#38BDF8"],
-                ["LATENCY", `${s.metrics.latency}ms`, "#20E3A2"],
-              ] as [string, string, string][]).map(([k, v, c]) => (
-                <div key={k} className="text-center">
-                  <p className="font-mono text-[9px] tracking-[0.16em] text-t3">{k}</p>
-                  <p className="mt-1 font-mono text-[19px] font-bold tabular-nums" style={{ color: c }}>{v}</p>
-                </div>
-              ))}
-            </div>
+      <Card>
+        <CardHead title="INFERENCE ENGINE" sub="Model source priority: backend model/ folder → uploaded file → bundled default" right={
+          <Button variant="secondary" size="sm" onClick={() => void s.refreshModels()}><RefreshCw size={13} /> RESCAN</Button>
+        } />
+        <div className="grid grid-cols-1 gap-3 p-5 md:grid-cols-4">
+          <div className="rounded-xl border border-line bg-ink p-4">
+            <p className="font-mono text-[9.5px] font-semibold tracking-[0.16em] text-t3">STATUS</p>
+            <p className={cx("mt-1.5 flex items-center gap-2 font-mono text-[13px] font-bold", e.state === "ready" ? "text-safe" : e.state === "loading" ? "text-pri" : "text-threat")}>
+              {e.state === "loading" ? <Loader2 size={13} className="animate-spin" /> : <span className={cx("h-2 w-2 rounded-full", e.state === "ready" ? "anim-pulse-soft bg-safe" : "bg-threat")} />}
+              {e.state.toUpperCase()}
+            </p>
           </div>
-        </Card>
-      )}
-
-      <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
-        {s.models.map((m) => <ModelCard key={m.id} m={m} />)}
-      </div>
-
-      <Card className="flex flex-wrap items-center gap-4 border-dashed p-5">
-        <span className="flex h-10 w-10 items-center justify-center rounded-lg border border-line bg-ink text-t3"><Cpu size={17} /></span>
-        <div className="flex-1">
-          <p className="text-[13px] font-semibold text-t1">Model directory: <span className="font-mono text-pri">/opt/safehaven/models</span></p>
-          <p className="mt-0.5 text-[11.5px] text-t3">Weights are validated, checksummed and hot-swapped without stream interruption.</p>
+          <div className="rounded-xl border border-line bg-ink p-4">
+            <p className="font-mono text-[9.5px] font-semibold tracking-[0.16em] text-t3">ACTIVE MODEL</p>
+            <p className="mt-1.5 truncate font-mono text-[13px] font-bold text-t1" title={e.modelName}>{e.modelName}</p>
+          </div>
+          <div className="rounded-xl border border-line bg-ink p-4">
+            <p className="font-mono text-[9.5px] font-semibold tracking-[0.16em] text-t3">LIVE INFERENCE</p>
+            <p className="mt-1.5 font-mono text-[13px] font-bold text-pri">{s.metrics.fps.toFixed(1)} FPS · {s.metrics.latency}ms</p>
+          </div>
+          <div className="rounded-xl border border-line bg-ink p-4">
+            <p className="font-mono text-[9.5px] font-semibold tracking-[0.16em] text-t3">RUNTIME</p>
+            <p className="mt-1.5 font-mono text-[13px] font-bold text-t2">ONNX · WASM · {navigator.hardwareConcurrency ?? 4}T</p>
+          </div>
         </div>
-        <span className={cx("font-mono text-[10px] tracking-wider text-t3")}>STORAGE 4.1 / 32 GB</span>
+        {e.state === "error" && (
+          <div className="mx-5 mb-5 flex flex-wrap items-center gap-3 rounded-xl border border-threat/40 bg-threat/8 px-4 py-3.5">
+            <AlertTriangle size={16} className="text-threat" />
+            <p className="flex-1 text-[12.5px] text-t1">
+              <span className="font-bold">AI Detection Engine Unavailable.</span>{" "}
+              <span className="text-t3">{e.error} Paste your <span className="font-mono text-t2">.onnx</span> into <span className="font-mono text-t2">server/model/</span> and restart, or upload below.</span>
+            </p>
+            <Button variant="danger" size="sm" onClick={() => setUpload(true)}>UPLOAD MODEL</Button>
+          </div>
+        )}
       </Card>
 
+      <Card className="flex flex-wrap items-center gap-4 border-pri/25 bg-pri/4 p-5">
+        <span className="flex h-11 w-11 items-center justify-center rounded-xl border border-pri/40 bg-pri/10 text-pri"><FolderOpen size={18} /></span>
+        <div className="min-w-0 flex-1">
+          <p className="text-[13.5px] font-bold text-t1">Backend <span className="font-mono text-pri">model/</span> folder — auto detection</p>
+          <p className="mt-0.5 text-[12px] leading-relaxed text-t3">
+            Paste any <span className="font-mono text-t2">.onnx</span> file into <span className="font-mono text-t2">server/model/</span> — the backend registers it on startup, watches the folder for new files, and serves it to this engine automatically. Add a matching <span className="font-mono text-t2">.classes.txt</span> for custom class names.
+          </p>
+        </div>
+        <Button variant="primary" onClick={() => setUpload(true)}><Upload size={15} /> UPLOAD MODEL</Button>
+      </Card>
+
+      <div className="flex items-center justify-between">
+        <h2 className="flex items-center gap-2 text-[15px] font-bold text-t1"><Cpu size={16} className="text-pri" /> Available Models <span className="font-mono text-[11px] text-t3">({s.models.length})</span></h2>
+      </div>
+      <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
+        {s.models.map((m) => <ModelCard key={m.id} m={m} activeEngine={e.modelName} />)}
+      </div>
+
       <UploadModal open={upload} onClose={() => setUpload(false)} />
-      <span className="hidden"><Target size={1} /></span>
     </div>
   );
 }

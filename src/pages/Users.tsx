@@ -24,8 +24,9 @@ function AddUserModal({ open, onClose }: { open: boolean; onClose: () => void })
   const [name, setName] = useState("");
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [role, setRole] = useState<UserRec["role"]>("OPERATOR");
-  const valid = name.trim() && username.trim() && email.includes("@");
+  const valid = name.trim() && username.trim() && email.includes("@") && password.length >= 6;
   return (
     <Modal open={open} onClose={onClose} width="max-w-md">
       <ModalHead title="ADD USER" sub="Provision a new console account" onClose={onClose} />
@@ -44,7 +45,7 @@ function AddUserModal({ open, onClose }: { open: boolean; onClose: () => void })
       </div>
       <div className="flex justify-end gap-2.5 border-t border-line px-6 py-4">
         <Button variant="ghost" onClick={onClose}>Cancel</Button>
-        <Button variant="primary" disabled={!valid} onClick={() => { s.addUser({ name: name.trim(), username: username.trim(), role, email: email.trim() }); onClose(); setName(""); setUsername(""); setEmail(""); }}>
+        <Button variant="primary" disabled={!valid} onClick={() => { void s.addUser({ name: name.trim(), username: username.trim(), role, email: email.trim(), password }); onClose(); setName(""); setUsername(""); setEmail(""); setPassword(""); }}>
           <UserPlus size={14} /> Create User
         </Button>
       </div>
