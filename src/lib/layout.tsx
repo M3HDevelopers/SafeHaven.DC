@@ -38,6 +38,7 @@ const NAV: { label: string; items: { page: Page; tab?: string; label: string; ic
     label: "MANAGEMENT",
     items: [
       { page: "cameras", label: "Cameras", icon: <CameraIcon size={17} /> },
+      { page: "media", label: "Detection Media", icon: <Video size={17} /> },
       { page: "models", label: "Detection Models", icon: <Layers size={17} /> },
       { page: "analytics", label: "Analytics", icon: <BarChart3 size={17} /> },
     ],
@@ -811,6 +812,7 @@ function MobileNav() {
     { page: "live", label: "Live", icon: <Radar size={19} /> },
     { page: "logs", label: "Threats", icon: <ScrollText size={19} /> },
     { page: "cameras", label: "Cameras", icon: <CameraIcon size={19} /> },
+    { page: "media", label: "Media", icon: <Video size={19} /> },
   ];
   const hasNew = s.incidents.some((i) => i.status === "New");
   return (

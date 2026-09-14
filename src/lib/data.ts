@@ -4,7 +4,7 @@ export type Severity = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
 export type IncidentStatus = "New" | "Reviewing" | "Reviewed";
 export type SourceKind = "webcam" | "video" | "image" | "rtsp";
 export type Page =
-  | "dashboard" | "live" | "logs" | "cameras" | "models"
+  | "dashboard" | "live" | "logs" | "cameras" | "media" | "models"
   | "analytics" | "settings" | "users" | "profile";
 
 export interface Box { x: number; y: number; w: number; h: number }

@@ -7,6 +7,7 @@ import Dashboard from "./pages/Dashboard";
 import Live from "./pages/Live";
 import Logs from "./pages/Logs";
 import Cameras from "./pages/Cameras";
+import Media from "./pages/Media";
 import Models from "./pages/Models";
 import Analytics from "./pages/Analytics";
 import Settings from "./pages/Settings";

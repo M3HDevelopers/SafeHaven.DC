@@ -190,20 +190,21 @@ function classesFor(file) {
 }
 
 async function scanModelFolder() {
-  const files = fs.readdirSync(MODEL_DIR).filter((f) => f.toLowerCase().endsWith(".onnx"));
+  const files = fs.readdirSync(MODEL_DIR).filter((f) => f.toLowerCase().endsWith(".onnx") || f.toLowerCase().endsWith(".pt"));
   for (const f of files) {
     const exists = await Model.findOne({ file: f });
     if (!exists) {
       const stat = fs.statSync(path.join(MODEL_DIR, f));
       const count = await Model.countDocuments();
+      const isPyTorch = f.toLowerCase().endsWith(".pt");
       await Model.create({
         name: f, file: f,
-        classes: classesFor(f),
+        classes: isPyTorch ? [] : classesFor(f),
         size: `${(stat.size / 1048576).toFixed(1)} MB`,
-        status: count === 0 ? "ACTIVE" : "STANDBY",
+        status: count === 0 && !isPyTorch ? "ACTIVE" : "STANDBY",
         uploaded: new Date().toLocaleDateString("en", { day: "2-digit", month: "short", year: "numeric" }),
       });
-      console.log(`[SafeHaven] New model auto-detected in model/ folder: ${f}`);
+      console.log(`[SafeHaven] New model auto-detected in model/ folder: ${f}${isPyTorch ? " (PyTorch — needs conversion to ONNX)" : ""}`);
     }
   }
 }
