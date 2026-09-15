@@ -4,17 +4,104 @@ import { useStore } from "../lib/store";
 import { Card, CardHead, Button, ConfirmModal, Modal, ModalHead, Field, Input, cx } from "../lib/ui";
 import type { ModelInfo } from "../lib/data";
 
+function ConvertModal({ onClose }: { onClose: () => void }) {
+  const script = `# Save as convert_pt_to_onnx.py and run: python convert_pt_to_onnx.py
+import torch
+import sys
+
+# Load your PyTorch model
+model_path = sys.argv[1] if len(sys.argv) > 1 else "best.pt"
+print(f"Loading {model_path}...")
+model = torch.load(model_path, map_location="cpu")
+
+# Handle YOLOv5/v8 format
+if isinstance(model, dict) and "model" in model:
+    model = model["model"]
+
+model.eval()
+model.to("cpu")
+
+# Export to ONNX
+onnx_path = model_path.replace(".pt", ".onnx")
+print(f"Exporting to {onnx_path}...")
+dummy_input = torch.randn(1, 3, 640, 640)
+torch.onnx.export(
+    model,
+    dummy_input,
+    onnx_path,
+    opset_version=12,
+    input_names=["images"],
+    output_names=["output"],
+    dynamic_axes={"images": {0: "batch"}, "output": {0: "batch"}}
+)
+print(f"✓ Saved: {onnx_path}")
+print("Now upload this .onnx file to SafeHaven!")
+`;
+
+  const copyScript = () => {
+    navigator.clipboard.writeText(script);
+  };
+
+  return (
+    <Modal open onClose={onClose} width="max-w-2xl">
+      <ModalHead title="Convert .pt to .onnx" sub="Python script for PyTorch → ONNX conversion" onClose={onClose} />
+      <div className="space-y-4 p-6">
+        <div className="rounded-lg border border-line bg-ink p-4">
+          <p className="text-[12px] font-semibold text-t1">Requirements:</p>
+          <ul className="mt-2 space-y-1 text-[11.5px] text-t3">
+            <li>• Python 3.8+ installed</li>
+            <li>• PyTorch: <span className="font-mono text-t2">pip install torch torchvision</span></li>
+            <li>• Your .pt model file</li>
+          </ul>
+        </div>
+
+        <div className="rounded-lg border border-line bg-[#0a0f18] p-4">
+          <div className="mb-2 flex items-center justify-between">
+            <p className="font-mono text-[10px] font-semibold tracking-wider text-t3">CONVERT SCRIPT</p>
+            <Button variant="ghost" size="sm" onClick={copyScript}>COPY</Button>
+          </div>
+          <pre className="overflow-x-auto font-mono text-[10.5px] leading-relaxed text-t2">{script}</pre>
+        </div>
+
+        <div className="rounded-lg border border-line bg-ink p-4">
+          <p className="text-[12px] font-semibold text-t1">How to use:</p>
+          <ol className="mt-2 space-y-1.5 text-[11.5px] text-t3">
+            <li><strong className="text-t1">1.</strong> Save the script above as <span className="font-mono text-t2">convert_pt_to_onnx.py</span></li>
+            <li><strong className="text-t1">2.</strong> Place your <span className="font-mono text-t2">best.pt</span> (or any .pt file) in the same folder</li>
+            <li><strong className="text-t1">3.</strong> Run: <span className="font-mono text-pri">python convert_pt_to_onnx.py best.pt</span></li>
+            <li><strong className="text-t1">4.</strong> Upload the generated <span className="font-mono text-t2">best.onnx</span> file here</li>
+          </ol>
+        </div>
+
+        <p className="text-[11px] leading-relaxed text-t3">
+          <strong>Note:</strong> If you encounter errors, ensure your PyTorch version matches the one used to train the model. For YOLOv5, use <span className="font-mono text-t2">pip install ultralytics</span> instead.
+        </p>
+      </div>
+      <div className="flex justify-end border-t border-line px-6 py-4">
+        <Button variant="primary" onClick={onClose}>GOT IT</Button>
+      </div>
+    </Modal>
+  );
+}
+
 function UploadModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const s = useStore();
-  const onnxIn = useRef<HTMLInputElement>(null);
-  const clsIn = useRef<HTMLInputElement>(null);
+  const modelIn = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
   const [classes, setClasses] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  const [showConvert, setShowConvert] = useState(false);
+
+  const isPyTorch = file?.name.toLowerCase().endsWith(".pt");
 
   const submit = async () => {
     if (!file) return;
+    if (isPyTorch) {
+      setErr("PyTorch (.pt) models must be converted to ONNX first. Click 'CONVERT .pt TO .onnx' for instructions.");
+      setShowConvert(true);
+      return;
+    }
     setBusy(true);
     setErr("");
     try {
@@ -31,16 +118,31 @@ function UploadModal({ open, onClose }: { open: boolean; onClose: () => void }) 
   };
 
   return (
-    <Modal open={open} onClose={onClose} width="max-w-md">
+    <Modal open={open} onClose={onClose} width="max-w-lg">
       <ModalHead title="UPLOAD MODEL" sub="ONNX weights for the browser inference engine" onClose={onClose} />
       <div className="space-y-4 p-6">
-        <input ref={onnxIn} type="file" accept=".onnx" className="hidden" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
-        <button onClick={() => onnxIn.current?.click()} className="flex w-full flex-col items-center gap-2 rounded-xl border-2 border-dashed border-line bg-ink px-6 py-7 transition-colors duration-150 hover:border-pri/50 hover:bg-pri/4">
+        <input ref={modelIn} type="file" accept=".onnx,.pt" className="hidden" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+        <button onClick={() => modelIn.current?.click()} className="flex w-full flex-col items-center gap-2 rounded-xl border-2 border-dashed border-line bg-ink px-6 py-7 transition-colors duration-150 hover:border-pri/50 hover:bg-pri/4">
           <Upload size={19} className="text-pri" />
-          <span className="text-[13px] font-semibold text-t1">{file ? file.name : "Select .onnx model file"}</span>
+          <span className="text-[13px] font-semibold text-t1">{file ? file.name : "Select .onnx or .pt model file"}</span>
           <span className="font-mono text-[10px] text-t3">{file ? `${(file.size / 1048576).toFixed(1)} MB` : "YOLOv5 / YOLOv8 exports supported"}</span>
         </button>
-        <Field label="Class Names (optional)" hint="Comma-separated, in model output order. Leave empty for COCO (80 classes) or if a classes file ships with the model on the backend.">
+
+        {isPyTorch && (
+          <div className="rounded-lg border border-warn/40 bg-warn/8 px-4 py-3">
+            <p className="flex items-center gap-2 text-[12px] font-semibold text-warn">
+              <AlertTriangle size={14} /> PyTorch (.pt) detected
+            </p>
+            <p className="mt-1.5 text-[11.5px] leading-relaxed text-t3">
+              Browser inference requires ONNX format. Click below for a Python script to convert your .pt file.
+            </p>
+            <Button variant="secondary" size="sm" className="mt-2.5" onClick={() => setShowConvert(true)}>
+              CONVERT .pt TO .onnx
+            </Button>
+          </div>
+        )}
+
+        <Field label="Class Names (optional)" hint="Comma-separated, in model output order. Leave empty for COCO (80 classes) or if a classes file ships with the model.">
           <Input value={classes} onChange={(e) => setClasses(e.target.value)} placeholder="firearm, knife, person" />
         </Field>
         <p className="rounded-lg border border-line bg-ink px-3.5 py-2.5 text-[11px] leading-relaxed text-t3">
@@ -54,6 +156,8 @@ function UploadModal({ open, onClose }: { open: boolean; onClose: () => void }) 
           {busy ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />} Upload & Load
         </Button>
       </div>
+
+      {showConvert && <ConvertModal onClose={() => setShowConvert(false)} />}
     </Modal>
   );
 }
@@ -62,6 +166,7 @@ function ModelCard({ m, activeEngine }: { m: ModelInfo; activeEngine: string }) 
   const s = useStore();
   const [confirm, setConfirm] = useState(false);
   const isLoaded = s.engine.state === "ready" && s.engine.modelName === m.name;
+  const isPyTorch = m.name.toLowerCase().endsWith(".pt");
   return (
     <Card hover className="flex flex-col p-4">
       <div className="flex items-start justify-between gap-3">
@@ -79,6 +184,16 @@ function ModelCard({ m, activeEngine }: { m: ModelInfo; activeEngine: string }) 
           <span className="rounded-md border border-line bg-ink px-2 py-1 font-mono text-[9.5px] text-t2">{m.origin.toUpperCase()}</span>
         </div>
       </div>
+      {isPyTorch && (
+        <div className="mt-3 rounded-lg border border-warn/40 bg-warn/8 px-3 py-2">
+          <p className="flex items-center gap-1.5 text-[10.5px] font-semibold text-warn">
+            <AlertTriangle size={12} /> PyTorch format — needs conversion
+          </p>
+          <p className="mt-1 text-[10px] leading-relaxed text-t3">
+            Convert to .onnx using the script in the upload modal, then upload the converted file.
+          </p>
+        </div>
+      )}
       <div className="mt-3.5 min-w-0">
         <p className="truncate text-[14px] font-bold text-t1" title={m.name}>{m.name}</p>
         <p className="font-mono text-[10.5px] tracking-wider text-pri">{m.version} · {m.size}</p>
@@ -93,8 +208,8 @@ function ModelCard({ m, activeEngine }: { m: ModelInfo; activeEngine: string }) 
         {m.origin === "default" ? (
           <Button variant="secondary" size="sm" className="flex-1" onClick={() => void s.useDefaultModel()}><Play size={13} /> USE DEFAULT</Button>
         ) : (
-          <Button variant={isLoaded ? "outline" : "primary"} size="sm" className="flex-1" disabled={isLoaded} onClick={() => void s.activateModel(m.id)}>
-            {isLoaded ? <><CheckCircle2 size={13} /> ACTIVE</> : <><Play size={13} /> ACTIVATE</>}
+          <Button variant={isLoaded ? "outline" : "primary"} size="sm" className="flex-1" disabled={isLoaded || isPyTorch} onClick={() => void s.activateModel(m.id)}>
+            {isLoaded ? <><CheckCircle2 size={13} /> ACTIVE</> : isPyTorch ? "CONVERT FIRST" : <><Play size={13} /> ACTIVATE</>}
           </Button>
         )}
         {m.origin !== "default" && (
@@ -167,6 +282,9 @@ export default function Models() {
           <p className="text-[13.5px] font-bold text-t1">Backend <span className="font-mono text-pri">model/</span> folder — auto detection</p>
           <p className="mt-0.5 text-[12px] leading-relaxed text-t3">
             Paste any <span className="font-mono text-t2">.onnx</span> file into <span className="font-mono text-t2">server/model/</span> — the backend registers it on startup, watches the folder for new files, and serves it to this engine automatically. Add a matching <span className="font-mono text-t2">.classes.txt</span> for custom class names.
+          </p>
+          <p className="mt-1.5 text-[11.5px] leading-relaxed text-t3">
+            <strong className="text-warn">Have a .pt (PyTorch) model?</strong> Upload it here — you'll get a conversion script to convert it to .onnx first.
           </p>
         </div>
         <Button variant="primary" onClick={() => setUpload(true)}><Upload size={15} /> UPLOAD MODEL</Button>
